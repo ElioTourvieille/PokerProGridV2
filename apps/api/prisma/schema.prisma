@@ -1,0 +1,165 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum Room {
+  WINAMAX
+  POKERSTARS
+  PMU
+  COINPOKER
+  UNIBET
+}
+
+enum TournamentType {
+  CLASSIC
+  KNOCKOUT
+  PROGRESSIVE_KNOCKOUT
+  FLIGHT
+}
+
+enum TournamentStructure {
+  NORMAL
+  DEEP_STACK
+  TURBO
+  HYPER_TURBO
+}
+
+enum TournamentStatus {
+  UPCOMING
+  REGISTERING
+  LATE_REG
+  RUNNING
+  FINISHED
+  CANCELLED
+}
+
+enum SessionStatus {
+  PLANNED
+  ACTIVE
+  PAUSED
+  COMPLETED
+}
+
+enum SessionTournamentStatus {
+  PLANNED
+  REGISTERED
+  PLAYING
+  ITM
+  BUST
+  FINISHED
+}
+
+enum SubscriptionTier {
+  FREE
+  PRO
+  PREMIUM
+}
+
+model User {
+  id                    String           @id @default(cuid())
+  email                 String           @unique
+  emailVerified         DateTime?
+  password              String?
+  username              String?          @unique
+  avatarUrl             String?
+  bankroll              Float            @default(0)
+  subscriptionTier      SubscriptionTier @default(FREE)
+  subscriptionExpiresAt DateTime?
+  stripeCustomerId      String?          @unique
+  defaultBuyIn          Float            @default(20)
+  favoriteStructures    String[]
+
+  sessions Session[]
+  accounts Account[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([email])
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  provider          String
+  providerAccountId String
+  accessToken       String?
+  refreshToken      String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Tournament {
+  id                String              @id @default(cuid())
+  externalId        String
+  room              Room
+  name              String
+  type              TournamentType
+  structure         TournamentStructure
+  buyIn             Float
+  rake              Float               @default(0)
+  guaranteed        Float               @default(0)
+  startTime         DateTime
+  lateRegEndsAt     DateTime?
+  maxPlayers        Int?
+  registeredPlayers Int                 @default(0)
+  status            TournamentStatus    @default(UPCOMING)
+  evScore           Float?
+  overlayAmount     Float?
+  rawData           Json?
+
+  sessionTournaments SessionTournament[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([room, externalId])
+  @@index([room, startTime])
+  @@index([status])
+}
+
+model Session {
+  id        String        @id @default(cuid())
+  userId    String
+  name      String?
+  status    SessionStatus @default(PLANNED)
+  startedAt DateTime?
+  endedAt   DateTime?
+  notes     String?
+
+  user        User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tournaments SessionTournament[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId, status])
+}
+
+model SessionTournament {
+  id           String                  @id @default(cuid())
+  sessionId    String
+  tournamentId String
+  status       SessionTournamentStatus @default(PLANNED)
+  buyIn        Float
+  position     Int?
+  totalPlayers Int?
+  cashout      Float                   @default(0)
+  rebuys       Int                     @default(0)
+  addOns       Int                     @default(0)
+  notes        String?
+
+  session    Session    @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  tournament Tournament @relation(fields: [tournamentId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([sessionId, tournamentId])
+}
