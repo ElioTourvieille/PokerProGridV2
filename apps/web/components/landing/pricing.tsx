@@ -23,7 +23,7 @@ const plans = [
   {
     name: 'Plan Grinder',
     tier: 'pro',
-    price: '8€',
+    price: '10€',
     period: '/mois',
     description: 'Pour les grinders sérieux',
     cta: 'Démarrer Pro',
@@ -41,7 +41,7 @@ const plans = [
   {
     name: 'Plan Élite',
     tier: 'premium',
-    price: '20€',
+    price: '25€',
     period: '/mois',
     description: 'Analyse IA post-session',
     cta: 'Accès Élite',
