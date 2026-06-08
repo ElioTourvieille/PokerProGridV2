@@ -1,97 +1,72 @@
+"""
+Winamax tournament scraper — fetches les-tournois_planning and extracts
+the embedded $tournaments JSON object (no auth required).
+"""
+import json
+import logging
+import re
+from datetime import datetime
+
 from playwright.async_api import async_playwright
 from pydantic import BaseModel
-from datetime import datetime
-from enum import Enum
-import httpx
-import logging
+
+from normalizers.winamax import normalize_all
 
 logger = logging.getLogger(__name__)
 
-WINAMAX_TOURNAMENTS_API = "https://www.winamax.fr/apiv2/tournaments"
-
-
-class TournamentType(str, Enum):
-    CLASSIC = "CLASSIC"
-    KNOCKOUT = "KNOCKOUT"
-    PROGRESSIVE_KNOCKOUT = "PROGRESSIVE_KNOCKOUT"
-    FLIGHT = "FLIGHT"
-
-
-class TournamentStructure(str, Enum):
-    NORMAL = "NORMAL"
-    DEEP_STACK = "DEEP_STACK"
-    TURBO = "TURBO"
-    HYPER_TURBO = "HYPER_TURBO"
+PLANNING_URL = "https://www.winamax.fr/les-tournois_planning"
+_MARKER = "$tournaments = {\""
 
 
 class ScrapedTournament(BaseModel):
     external_id: str
     room: str = "WINAMAX"
     name: str
-    type: TournamentType
-    structure: TournamentStructure
+    type: str
+    structure: str
     buy_in: float
-    rake: float
-    guaranteed: float
+    rake: float = 0.0
+    guaranteed: float = 0.0
     start_time: datetime
-    late_reg_ends_at: datetime | None
-    max_players: int | None
-    registered_players: int
-    status: str
+    late_reg_ends_at: datetime | None = None
+    max_players: int | None = None
+    registered_players: int = 0
+    status: str = "UPCOMING"
 
 
 class WinamaxScraper:
     async def fetch_tournaments(self) -> list[ScrapedTournament]:
-        async with httpx.AsyncClient(timeout=30) as client:
-            response = await client.get(WINAMAX_TOURNAMENTS_API)
-            response.raise_for_status()
-            data = response.json()
-        return self._parse(data)
-
-    def _parse(self, data: dict) -> list[ScrapedTournament]:
-        tournaments = []
-        for item in data.get("tournaments", []):
-            try:
-                tournament = self._parse_item(item)
-                if tournament:
-                    tournaments.append(tournament)
-            except Exception as e:
-                logger.warning(f"Failed to parse tournament {item.get('id')}: {e}")
+        html = await self._fetch_html()
+        raw_data = self._extract_json(html)
+        if not raw_data:
+            logger.warning("No $tournaments JSON found in planning page HTML")
+            return []
+        tournaments = normalize_all(raw_data)
+        logger.info(f"Scraped {len(tournaments)} Winamax tournaments")
         return tournaments
 
-    def _parse_item(self, item: dict) -> ScrapedTournament | None:
-        speed = item.get("speed", "normal").upper()
-        structure_map = {
-            "NORMAL": TournamentStructure.NORMAL,
-            "DEEPSTACK": TournamentStructure.DEEP_STACK,
-            "DEEP": TournamentStructure.DEEP_STACK,
-            "TURBO": TournamentStructure.TURBO,
-            "HYPER": TournamentStructure.HYPER_TURBO,
-            "HYPERTURBO": TournamentStructure.HYPER_TURBO,
-        }
-        kind = item.get("type", "").upper()
-        type_map = {
-            "CLASSIC": TournamentType.CLASSIC,
-            "FREEZEOUT": TournamentType.CLASSIC,
-            "KO": TournamentType.KNOCKOUT,
-            "KNOCKOUT": TournamentType.KNOCKOUT,
-            "PKO": TournamentType.PROGRESSIVE_KNOCKOUT,
-            "PROGRESSIVEKNOCKOUT": TournamentType.PROGRESSIVE_KNOCKOUT,
-            "FLIGHT": TournamentType.FLIGHT,
-        }
-        return ScrapedTournament(
-            external_id=str(item["id"]),
-            name=item["name"],
-            type=type_map.get(kind, TournamentType.CLASSIC),
-            structure=structure_map.get(speed, TournamentStructure.NORMAL),
-            buy_in=float(item.get("buyIn", 0)) / 100,
-            rake=float(item.get("fee", 0)) / 100,
-            guaranteed=float(item.get("prizepool", {}).get("guaranteed", 0)) / 100,
-            start_time=datetime.fromtimestamp(item["startDate"]),
-            late_reg_ends_at=datetime.fromtimestamp(item["lateRegistrationDate"])
-            if item.get("lateRegistrationDate")
-            else None,
-            max_players=item.get("maxPlayers"),
-            registered_players=item.get("registeredPlayers", 0),
-            status=item.get("status", "UPCOMING").upper(),
-        )
+    async def _fetch_html(self) -> str:
+        async with async_playwright() as p:
+            browser = await p.chromium.launch(headless=True)
+            context = await browser.new_context(locale="fr-FR")
+            page = await context.new_page()
+            try:
+                await page.goto(PLANNING_URL, timeout=30000)
+                await page.wait_for_timeout(2000)
+                return await page.content()
+            finally:
+                await browser.close()
+
+    def _extract_json(self, html: str) -> dict:
+        idx = html.find(_MARKER)
+        if idx < 0:
+            return {}
+        brace_start = html.find("{", idx + len("$tournaments = "))
+        if brace_start < 0:
+            return {}
+        try:
+            obj, _ = json.JSONDecoder().raw_decode(html, idx=brace_start)
+            return obj
+        except json.JSONDecodeError as e:
+            logger.error(f"Failed to decode $tournaments JSON: {e}")
+            return {}
