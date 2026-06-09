@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { signIn } from 'next-auth/react'
 import { LayoutGrid, Loader2 } from 'lucide-react'
+import { toast } from 'sonner'
 import { api } from '@/lib/api-client'
 
 export default function RegisterPage() {
@@ -12,12 +13,10 @@ export default function RegisterPage() {
   const [email, setEmail] = useState('')
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
-  const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    setError('')
     setLoading(true)
 
     try {
@@ -25,13 +24,14 @@ export default function RegisterPage() {
 
       const result = await signIn('credentials', { email, password, redirect: false })
       if (result?.error) {
-        setError('Inscription réussie mais connexion échouée. Veuillez vous connecter.')
+        toast.error('Inscription réussie mais connexion échouée. Veuillez vous connecter.')
         router.push('/login')
       } else {
+        toast.success('Compte créé avec succès !')
         router.push('/dashboard')
       }
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'Une erreur est survenue.')
+      toast.error(err instanceof Error ? err.message : 'Une erreur est survenue.')
     } finally {
       setLoading(false)
     }
@@ -48,12 +48,6 @@ export default function RegisterPage() {
         <h1 className="text-lg font-bold text-on-surface">Créer un compte</h1>
         <p className="text-xs text-muted-foreground">Commencez gratuitement</p>
       </div>
-
-      {error && (
-        <div className="text-xs text-danger bg-danger/10 border border-danger/20 rounded px-3 py-2">
-          {error}
-        </div>
-      )}
 
       <form onSubmit={handleSubmit} className="space-y-4">
         <div className="space-y-1.5">

@@ -5,6 +5,7 @@ import { AuthModule } from './modules/auth/auth.module'
 import { UsersModule } from './modules/users/users.module'
 import { TournamentsModule } from './modules/tournaments/tournaments.module'
 import { ScraperModule } from './modules/scraper/scraper.module'
+import { SessionsModule } from './modules/sessions/sessions.module'
 
 @Module({
   imports: [
@@ -14,6 +15,7 @@ import { ScraperModule } from './modules/scraper/scraper.module'
     UsersModule,
     TournamentsModule,
     ScraperModule,
+    SessionsModule,
   ],
 })
 export class AppModule {}

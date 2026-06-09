@@ -13,7 +13,7 @@ const TIER_BADGE: Record<string, { label: string; className: string }> = {
 
 export function Header({ title }: { title?: string }) {
   const { data: session } = useSession()
-  const tier = (session?.user?.tier as string) ?? 'FREE'
+  const tier = session?.tier ?? 'FREE'
   const badge = TIER_BADGE[tier] ?? TIER_BADGE.FREE
 
   return (

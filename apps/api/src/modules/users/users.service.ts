@@ -52,4 +52,63 @@ export class UsersService {
       select: { defaultBuyIn: true, favoriteStructures: true },
     })
   }
+
+  async getStats(userId: string) {
+    const sessions = await this.prisma.session.findMany({
+      where: { userId, status: 'COMPLETED' },
+      orderBy: { endedAt: 'asc' },
+      include: {
+        tournaments: {
+          select: {
+            buyIn: true,
+            cashout: true,
+            status: true,
+            tournament: { select: { type: true, name: true } },
+          },
+        },
+      },
+    })
+
+    let totalBuyIn = 0
+    let totalCashout = 0
+    const byType: Record<string, { buyIn: number; cashout: number; count: number }> = {}
+    const nameCounts: Record<string, number> = {}
+
+    for (const s of sessions) {
+      for (const st of s.tournaments) {
+        totalBuyIn += st.buyIn
+        totalCashout += st.cashout
+        const type = st.tournament.type
+        byType[type] ??= { buyIn: 0, cashout: 0, count: 0 }
+        byType[type].buyIn += st.buyIn
+        byType[type].cashout += st.cashout
+        byType[type].count++
+        nameCounts[st.tournament.name] = (nameCounts[st.tournament.name] ?? 0) + 1
+      }
+    }
+
+    const profitLoss = totalCashout - totalBuyIn
+    const roi = totalBuyIn > 0 ? (profitLoss / totalBuyIn) * 100 : 0
+
+    let cumulative = 0
+    const plOverTime = sessions.map((s) => {
+      const sbi = s.tournaments.reduce((sum, st) => sum + st.buyIn, 0)
+      const sco = s.tournaments.reduce((sum, st) => sum + st.cashout, 0)
+      cumulative += sco - sbi
+      return { date: (s.endedAt ?? s.createdAt).toISOString(), profitLoss: sco - sbi, cumulative }
+    })
+
+    const roiByType = Object.entries(byType).map(([type, { buyIn, cashout, count }]) => ({
+      type,
+      roi: buyIn > 0 ? ((cashout - buyIn) / buyIn) * 100 : 0,
+      count,
+    }))
+
+    const mostPlayedTournaments = Object.entries(nameCounts)
+      .map(([name, count]) => ({ name, count }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 5)
+
+    return { sessionCount: sessions.length, totalBuyIn, totalCashout, profitLoss, roi, plOverTime, roiByType, mostPlayedTournaments }
+  }
 }

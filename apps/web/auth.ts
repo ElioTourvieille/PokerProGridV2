@@ -13,7 +13,8 @@ function decodeJwtPayload(token: string): Record<string, string> {
 declare module 'next-auth' {
   interface Session {
     accessToken: string
-    user: { id: string; email: string; tier: string }
+    userId: string
+    tier: string
   }
   interface User {
     accessToken: string
@@ -61,20 +62,16 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   callbacks: {
     jwt({ token, user }) {
       if (user) {
-        const u = user as { accessToken: string; tier: string }
-        token.accessToken = u.accessToken
-        token.tier = u.tier
+        token.accessToken = user.accessToken
+        token.tier = user.tier
       }
       return token
     },
     session({ session, token }) {
-      session.accessToken = token.accessToken as string
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      ;(session as any).user = {
-        id: token.sub ?? '',
-        email: token.email ?? '',
-        tier: (token.tier as string) ?? 'FREE',
-      }
+      const t = token as typeof token & { accessToken?: string; tier?: string }
+      session.accessToken = t.accessToken ?? ''
+      session.userId = t.sub ?? ''
+      session.tier = t.tier ?? 'FREE'
       return session
     },
   },

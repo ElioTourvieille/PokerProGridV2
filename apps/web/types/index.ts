@@ -56,6 +56,49 @@ export interface SessionTournament {
   tournament?: Tournament
 }
 
+export interface SessionSummary {
+  id: string
+  userId: string
+  name: string | null
+  status: SessionStatus
+  startedAt: string | null
+  endedAt: string | null
+  notes: string | null
+  tournamentCount: number
+  totalBuyIn: number
+  totalCashout: number
+  profitLoss: number
+  roi: number
+}
+
+export interface SessionsResponse {
+  sessions: SessionSummary[]
+  total: number
+}
+
+export interface PlDataPoint {
+  date: string
+  profitLoss: number
+  cumulative: number
+}
+
+export interface RoiByType {
+  type: TournamentType
+  roi: number
+  count: number
+}
+
+export interface UserStats {
+  sessionCount: number
+  totalBuyIn: number
+  totalCashout: number
+  profitLoss: number
+  roi: number
+  plOverTime: PlDataPoint[]
+  roiByType: RoiByType[]
+  mostPlayedTournaments: { name: string; count: number }[]
+}
+
 export type SubscriptionTier = 'FREE' | 'PRO' | 'PREMIUM'
 
 export interface UserProfile {

@@ -31,4 +31,9 @@ export class UsersController {
   ) {
     return this.usersService.updatePreferences(user.id, dto)
   }
+
+  @Get('me/stats')
+  getStats(@CurrentUser() user: RequestUser) {
+    return this.usersService.getStats(user.id)
+  }
 }
