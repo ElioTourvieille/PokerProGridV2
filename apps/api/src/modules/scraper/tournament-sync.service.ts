@@ -33,19 +33,36 @@ export class TournamentSyncService implements OnModuleInit, OnModuleDestroy {
 
   onModuleInit() {
     const redisUrl = this.config.get<string>('REDIS_URL', 'redis://localhost:6379')
-    this.subscriber = new Redis(redisUrl)
+
+    this.subscriber = new Redis(redisUrl, {
+      // No limit on retries for subscribe commands — needed for auto-reconnect
+      maxRetriesPerRequest: null,
+      // Retry with increasing backoff, give up logging after first attempt
+      retryStrategy: (times) => {
+        if (times === 1) this.logger.warn('Redis unavailable — will retry silently until it comes back')
+        // Never stop retrying: keep trying until Docker/Redis starts
+        return Math.min(times * 200, 5_000)
+      },
+    })
+
+    // Handle errors explicitly so ioredis doesn't emit an unhandled error event
+    this.subscriber.on('error', (err: Error) => {
+      if (!err.message.includes('ECONNREFUSED') && !err.message.includes('ENOTFOUND')) {
+        this.logger.error(`Redis error: ${err.message}`)
+      }
+    })
+
+    this.subscriber.on('ready', () => {
+      this.logger.log('Redis connected — subscribing to tournaments:updated')
+    })
 
     this.subscriber.subscribe('tournaments:updated', (err) => {
-      if (err) {
-        this.logger.error(`Redis subscribe error: ${err.message}`)
-        return
-      }
-      this.logger.log('Subscribed to tournaments:updated channel')
+      if (err) this.logger.error(`Redis subscribe error: ${err.message}`)
     })
 
     this.subscriber.on('message', (_channel: string, room: string) => {
       this.logger.log(`Received update signal for room: ${room}`)
-      this.syncRoom(room).catch((e) => this.logger.error(`Sync failed for ${room}: ${e.message}`))
+      this.syncRoom(room).catch((e: Error) => this.logger.error(`Sync failed for ${room}: ${e.message}`))
     })
   }
 
@@ -54,7 +71,10 @@ export class TournamentSyncService implements OnModuleInit, OnModuleDestroy {
   }
 
   private async syncRoom(room: string) {
-    const dataClient = new Redis(this.config.get<string>('REDIS_URL', 'redis://localhost:6379'))
+    const redisUrl = this.config.get<string>('REDIS_URL', 'redis://localhost:6379')
+    const dataClient = new Redis(redisUrl, { maxRetriesPerRequest: 3 })
+    dataClient.on('error', (err: Error) => this.logger.error(`Redis data error: ${err.message}`))
+
     try {
       const raw = await dataClient.get(`${room}:tournaments`)
       if (!raw) {
@@ -90,10 +110,10 @@ export class TournamentSyncService implements OnModuleInit, OnModuleDestroy {
           rawData: null,
           createdAt: new Date(),
           updatedAt: new Date(),
-          room: partial.room as any,
-          type: partial.type as any,
-          structure: partial.structure as any,
-          status: partial.status as any,
+          room: partial.room as never,
+          type: partial.type as never,
+          structure: partial.structure as never,
+          status: partial.status as never,
         })
 
         return { ...partial, ...scores }
