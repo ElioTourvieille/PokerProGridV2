@@ -62,6 +62,7 @@ export class UsersService {
           select: {
             buyIn: true,
             cashout: true,
+            rebuys: true,
             status: true,
             tournament: { select: { type: true, name: true } },
           },
@@ -76,11 +77,12 @@ export class UsersService {
 
     for (const s of sessions) {
       for (const st of s.tournaments) {
-        totalBuyIn += st.buyIn
+        const effectiveBuyIn = st.buyIn * (1 + st.rebuys)
+        totalBuyIn += effectiveBuyIn
         totalCashout += st.cashout
         const type = st.tournament.type
         byType[type] ??= { buyIn: 0, cashout: 0, count: 0 }
-        byType[type].buyIn += st.buyIn
+        byType[type].buyIn += effectiveBuyIn
         byType[type].cashout += st.cashout
         byType[type].count++
         nameCounts[st.tournament.name] = (nameCounts[st.tournament.name] ?? 0) + 1
@@ -92,7 +94,7 @@ export class UsersService {
 
     let cumulative = 0
     const plOverTime = sessions.map((s) => {
-      const sbi = s.tournaments.reduce((sum, st) => sum + st.buyIn, 0)
+      const sbi = s.tournaments.reduce((sum, st) => sum + st.buyIn * (1 + st.rebuys), 0)
       const sco = s.tournaments.reduce((sum, st) => sum + st.cashout, 0)
       cumulative += sco - sbi
       return { date: (s.endedAt ?? s.createdAt).toISOString(), profitLoss: sco - sbi, cumulative }

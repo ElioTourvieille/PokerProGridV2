@@ -2,9 +2,19 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { PlusCircle, Clock, CheckCircle, Pause, Calendar } from 'lucide-react'
+import { Trash2, Clock, CheckCircle, Pause, Calendar } from 'lucide-react'
 import { Header } from '@/components/layout/header'
-import { useGetSessions, useCreateSession } from '@/hooks/use-sessions'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
+import { useGetSessions, useDeleteSession } from '@/hooks/use-sessions'
 import { cn } from '@/lib/utils'
 import type { SessionStatus, SessionSummary } from '@/types'
 
@@ -24,7 +34,15 @@ function PnlCell({ value }: { value: number }) {
   )
 }
 
-function SessionRow({ s, onClick }: { s: SessionSummary; onClick: () => void }) {
+function SessionRow({
+  s,
+  onClick,
+  onDelete,
+}: {
+  s: SessionSummary
+  onClick: () => void
+  onDelete: (e: React.MouseEvent) => void
+}) {
   const cfg = STATUS_CONFIG[s.status]
   const Icon = cfg.icon
   const date = s.startedAt ? new Date(s.startedAt).toLocaleDateString('fr-FR') : '—'
@@ -32,7 +50,7 @@ function SessionRow({ s, onClick }: { s: SessionSummary; onClick: () => void }) 
   return (
     <tr
       onClick={onClick}
-      className="border-b border-border hover:bg-surface-container/50 cursor-pointer transition-colors"
+      className="border-b border-border hover:bg-surface-container/50 cursor-pointer transition-colors group"
     >
       <td className="px-4 py-3 text-sm text-on-surface-variant font-mono">{date}</td>
       <td className="px-4 py-3 text-sm text-on-surface font-medium">{s.name ?? 'Session sans nom'}</td>
@@ -49,6 +67,15 @@ function SessionRow({ s, onClick }: { s: SessionSummary; onClick: () => void }) 
           {cfg.label}
         </span>
       </td>
+      <td className="px-4 py-3 text-right">
+        <button
+          onClick={onDelete}
+          className="opacity-0 group-hover:opacity-100 p-1 rounded text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-all"
+          title="Supprimer la session"
+        >
+          <Trash2 className="w-3.5 h-3.5" />
+        </button>
+      </td>
     </tr>
   )
 }
@@ -56,13 +83,18 @@ function SessionRow({ s, onClick }: { s: SessionSummary; onClick: () => void }) 
 export default function SessionsPage() {
   const router = useRouter()
   const { data, isLoading } = useGetSessions()
-  const createSession = useCreateSession()
-  const [creating, setCreating] = useState(false)
-  const [name, setName] = useState('')
+  const deleteSession = useDeleteSession()
+  const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null)
 
-  async function handleCreate() {
-    const session = await createSession.mutateAsync({ name: name.trim() || undefined })
-    router.push(`/sessions/${session.id}`)
+  function requestDelete(e: React.MouseEvent, sessionId: string) {
+    e.stopPropagation()
+    setPendingDeleteId(sessionId)
+  }
+
+  function confirmDelete() {
+    if (pendingDeleteId) {
+      deleteSession.mutate(pendingDeleteId, { onSettled: () => setPendingDeleteId(null) })
+    }
   }
 
   return (
@@ -73,33 +105,12 @@ export default function SessionsPage() {
           <p className="text-sm text-on-surface-variant">
             {data?.total ?? 0} session{(data?.total ?? 0) !== 1 ? 's' : ''}
           </p>
-          {creating ? (
-            <div className="flex items-center gap-2">
-              <input
-                autoFocus
-                type="text"
-                placeholder="Nom de la session (optionnel)"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                onKeyDown={(e) => { if (e.key === 'Enter') handleCreate(); if (e.key === 'Escape') setCreating(false) }}
-                className="text-sm bg-surface-container border border-border rounded px-3 py-1.5 text-on-surface placeholder:text-muted-foreground focus:outline-none focus:border-electric-blue w-56"
-              />
-              <button onClick={handleCreate} disabled={createSession.isPending} className="text-sm px-3 py-1.5 bg-electric-blue text-white rounded hover:bg-electric-blue/90 disabled:opacity-50 transition-colors">
-                Créer
-              </button>
-              <button onClick={() => setCreating(false)} className="text-sm px-3 py-1.5 text-on-surface-variant hover:text-on-surface transition-colors">
-                Annuler
-              </button>
-            </div>
-          ) : (
-            <button
-              onClick={() => setCreating(true)}
-              className="flex items-center gap-2 text-sm px-3 py-1.5 bg-electric-blue text-white rounded hover:bg-electric-blue/90 transition-colors"
-            >
-              <PlusCircle className="w-4 h-4" />
-              Nouvelle session
+          <p className="text-xs text-muted-foreground">
+            Créez une session depuis le{' '}
+            <button onClick={() => router.push('/dashboard')} className="text-electric-blue hover:underline">
+              Dashboard
             </button>
-          )}
+          </p>
         </div>
 
         {isLoading ? (
@@ -108,15 +119,28 @@ export default function SessionsPage() {
           <div className="text-center py-24 text-muted-foreground">
             <Clock className="w-10 h-10 mx-auto mb-3 opacity-30" />
             <p className="text-sm">Aucune session pour l'instant</p>
-            <p className="text-xs mt-1">Créez votre première session pour commencer à tracker</p>
+            <p className="text-xs mt-1">
+              Ajoutez des tournois depuis le{' '}
+              <button onClick={() => router.push('/dashboard')} className="text-electric-blue hover:underline">
+                Dashboard
+              </button>{' '}
+              et validez votre grille
+            </p>
           </div>
         ) : (
           <div className="rounded-lg border border-border overflow-hidden">
             <table className="w-full text-left">
               <thead>
                 <tr className="bg-surface-container border-b border-border">
-                  {['Date', 'Nom', 'Tournois', 'Buy-in', 'Cashout', 'P&L', 'ROI', 'Statut'].map((h) => (
-                    <th key={h} className={cn('px-4 py-2.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground', h === 'Tournois' && 'text-center', ['Buy-in','Cashout','P&L','ROI'].includes(h) && 'text-right')}>
+                  {['Date', 'Nom', 'Tournois', 'Buy-in', 'Cashout', 'P&L', 'ROI', 'Statut', ''].map((h) => (
+                    <th
+                      key={h}
+                      className={cn(
+                        'px-4 py-2.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground',
+                        h === 'Tournois' && 'text-center',
+                        ['Buy-in', 'Cashout', 'P&L', 'ROI'].includes(h) && 'text-right',
+                      )}
+                    >
                       {h}
                     </th>
                   ))}
@@ -124,13 +148,38 @@ export default function SessionsPage() {
               </thead>
               <tbody>
                 {data.sessions.map((s) => (
-                  <SessionRow key={s.id} s={s} onClick={() => router.push(`/sessions/${s.id}`)} />
+                  <SessionRow
+                    key={s.id}
+                    s={s}
+                    onClick={() => router.push(`/sessions/${s.id}`)}
+                    onDelete={(e) => requestDelete(e, s.id)}
+                  />
                 ))}
               </tbody>
             </table>
           </div>
         )}
       </div>
+
+      <AlertDialog open={!!pendingDeleteId} onOpenChange={(open) => !open && setPendingDeleteId(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Supprimer la session ?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Cette action est irréversible. Tous les tournois et résultats de cette session seront supprimés.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Annuler</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={confirmDelete}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              Supprimer
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }

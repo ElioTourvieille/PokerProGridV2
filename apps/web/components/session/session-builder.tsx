@@ -1,6 +1,8 @@
 'use client'
 
+import { useState } from 'react'
 import { AlertTriangle, Check, Trash2, X } from 'lucide-react'
+import { useRouter } from 'next/navigation'
 import { useSessionStore } from '@/store/session.store'
 import { useCreateSession } from '@/hooks/use-sessions'
 import { cn } from '@/lib/utils'
@@ -24,7 +26,9 @@ const TYPE_ABBR: Record<string, string> = {
 export function SessionBuilder() {
   const { items, removeItem, clearSession, totalBuyIn, overlappingIds } = useSessionStore()
   const createSession = useCreateSession()
+  const router = useRouter()
   const overlaps = overlappingIds()
+  const [sessionName, setSessionName] = useState('')
 
   if (items.length === 0) {
     return (
@@ -40,8 +44,14 @@ export function SessionBuilder() {
 
   const handleValidate = () => {
     createSession.mutate(
-      { tournamentIds: items.map((i) => i.id) },
-      { onSuccess: clearSession },
+      { name: sessionName.trim() || undefined, tournamentIds: items.map((i) => i.id) },
+      {
+        onSuccess: (session) => {
+          clearSession()
+          setSessionName('')
+          router.push(`/sessions/${session.id}`)
+        },
+      },
     )
   }
 
@@ -140,15 +150,23 @@ export function SessionBuilder() {
       </div>
 
       {/* Footer */}
-      <div className="flex items-center justify-between px-4 py-3 border-t border-border bg-surface-elevated">
-        <div className="text-sm font-mono">
+      <div className="flex items-center gap-3 px-4 py-3 border-t border-border bg-surface-elevated">
+        <div className="text-sm font-mono shrink-0">
           <span className="text-muted-foreground">Total : </span>
           <span className="font-bold text-on-surface">{totalBuyIn().toFixed(2)}€</span>
         </div>
+        <input
+          type="text"
+          placeholder="Nom de la session (optionnel)"
+          value={sessionName}
+          onChange={(e) => setSessionName(e.target.value)}
+          onKeyDown={(e) => e.key === 'Enter' && handleValidate()}
+          className="flex-1 text-sm bg-surface-container border border-border rounded px-3 py-1.5 text-on-surface placeholder:text-muted-foreground focus:outline-none focus:border-electric-blue min-w-0"
+        />
         <button
           onClick={handleValidate}
           disabled={createSession.isPending}
-          className="flex items-center gap-2 bg-electric-blue text-white text-sm font-semibold px-4 py-2 rounded-md hover:opacity-90 disabled:opacity-50 transition-opacity"
+          className="shrink-0 bg-electric-blue text-white text-sm font-semibold px-4 py-2 rounded-md hover:opacity-90 disabled:opacity-50 transition-opacity"
         >
           {createSession.isPending ? 'Création…' : 'Valider la session'}
         </button>

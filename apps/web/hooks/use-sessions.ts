@@ -31,7 +31,7 @@ export function useCreateSession() {
   const qc = useQueryClient()
 
   return useMutation({
-    mutationFn: (data: { name?: string; notes?: string }) =>
+    mutationFn: (data: { name?: string; notes?: string; tournamentIds?: string[] }) =>
       api.post<Session>('/sessions', data, session?.accessToken),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['sessions'] })
@@ -89,6 +89,21 @@ export function useUpdateSessionTournament() {
       api.patch<SessionTournament>(`/sessions/${sessionId}/tournaments/${tournamentId}`, data, session?.accessToken),
     onSuccess: (_data, { sessionId }) => {
       qc.invalidateQueries({ queryKey: ['session', sessionId] })
+    },
+    onError: (err: Error) => toast.error(err.message),
+  })
+}
+
+export function useDeleteSession() {
+  const { data: session } = useSession()
+  const qc = useQueryClient()
+
+  return useMutation({
+    mutationFn: (sessionId: string) =>
+      api.delete(`/sessions/${sessionId}`, session?.accessToken),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['sessions'] })
+      toast.success('Session supprimée')
     },
     onError: (err: Error) => toast.error(err.message),
   })

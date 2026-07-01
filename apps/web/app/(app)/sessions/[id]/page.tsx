@@ -2,9 +2,9 @@
 
 import { use, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { CheckCircle2, ChevronLeft, Trophy } from 'lucide-react'
+import { CheckCircle2, ChevronLeft, Pencil, Trophy } from 'lucide-react'
 import { Header } from '@/components/layout/header'
-import { useGetSession, useUpdateSessionTournament, useCompleteSession } from '@/hooks/use-sessions'
+import { useGetSession, useUpdateSession, useUpdateSessionTournament, useCompleteSession } from '@/hooks/use-sessions'
 import { cn } from '@/lib/utils'
 import type { SessionTournamentStatus, SessionTournament } from '@/types'
 
@@ -35,12 +35,19 @@ const TRANSITIONS: Record<SessionTournamentStatus, SessionTournamentStatus[]> = 
   FINISHED:   [],
 }
 
-function TournamentRow({ st, sessionId }: { st: SessionTournament & { tournament?: { name: string; startTime: string; buyIn: number } }; sessionId: string }) {
+function TournamentRow({
+  st,
+  sessionId,
+}: {
+  st: SessionTournament & { tournament?: { name: string; startTime: string; buyIn: number } }
+  sessionId: string
+}) {
   const update = useUpdateSessionTournament()
   const [cashout, setCashout] = useState(st.cashout.toString())
-  const [editing, setEditing] = useState(false)
+  const [editingCashout, setEditingCashout] = useState(false)
 
   const next = TRANSITIONS[st.status]
+  const canRebuy = st.status === 'REGISTERED' || st.status === 'PLAYING'
   const time = st.tournament?.startTime
     ? new Date(st.tournament.startTime).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })
     : '—'
@@ -49,22 +56,38 @@ function TournamentRow({ st, sessionId }: { st: SessionTournament & { tournament
     update.mutate({ sessionId, tournamentId: st.tournamentId, data: { status } })
   }
 
+  function addRebuy() {
+    update.mutate({ sessionId, tournamentId: st.tournamentId, data: { rebuys: st.rebuys + 1 } })
+  }
+
   function saveCashout() {
     const v = parseFloat(cashout)
     if (!isNaN(v)) {
       update.mutate({ sessionId, tournamentId: st.tournamentId, data: { cashout: v } })
     }
-    setEditing(false)
+    setEditingCashout(false)
   }
 
   return (
     <tr className="border-b border-border">
       <td className="px-4 py-3 font-mono text-xs text-muted-foreground">{time}</td>
-      <td className="px-4 py-3 text-sm text-on-surface max-w-xs truncate">{st.tournament?.name ?? '—'}</td>
-      <td className="px-4 py-3 font-mono text-sm text-on-surface-variant text-right">{st.buyIn.toFixed(2)}€</td>
+      <td className="px-4 py-3 text-sm text-on-surface max-w-xs">
+        <span className="truncate block">{st.tournament?.name ?? '—'}</span>
+        {st.rebuys > 0 && (
+          <span className="text-xs text-warning font-mono">+{st.rebuys} rebuy{st.rebuys > 1 ? 's' : ''} ({(st.buyIn * st.rebuys).toFixed(2)}€)</span>
+        )}
+      </td>
+      <td className="px-4 py-3 font-mono text-sm text-right">
+        <div>
+          <span className="text-on-surface-variant">{st.buyIn.toFixed(2)}€</span>
+          {st.rebuys > 0 && (
+            <div className="text-xs text-muted-foreground">= {(st.buyIn * (1 + st.rebuys)).toFixed(2)}€ total</div>
+          )}
+        </div>
+      </td>
       <td className="px-4 py-3 text-right">
         {st.status === 'ITM' || st.status === 'FINISHED' ? (
-          editing ? (
+          editingCashout ? (
             <input
               autoFocus
               type="number"
@@ -77,7 +100,7 @@ function TournamentRow({ st, sessionId }: { st: SessionTournament & { tournament
               className="w-24 text-right font-mono text-sm bg-surface-container border border-electric-blue rounded px-2 py-0.5 focus:outline-none text-on-surface"
             />
           ) : (
-            <button onClick={() => setEditing(true)} className="font-mono text-sm text-success hover:underline">
+            <button onClick={() => setEditingCashout(true)} className="font-mono text-sm text-success hover:underline">
               {st.cashout.toFixed(2)}€
             </button>
           )
@@ -91,7 +114,16 @@ function TournamentRow({ st, sessionId }: { st: SessionTournament & { tournament
         </span>
       </td>
       <td className="px-4 py-3 text-right">
-        <div className="flex justify-end gap-1.5">
+        <div className="flex justify-end gap-1.5 flex-wrap">
+          {canRebuy && (
+            <button
+              onClick={addRebuy}
+              disabled={update.isPending}
+              className="text-xs px-2 py-1 rounded border border-warning/40 text-warning hover:bg-warning/10 transition-colors disabled:opacity-50"
+            >
+              + Rebuy
+            </button>
+          )}
           {next.map((s) => (
             <button
               key={s}
@@ -99,11 +131,11 @@ function TournamentRow({ st, sessionId }: { st: SessionTournament & { tournament
               disabled={update.isPending}
               className={cn(
                 'text-xs px-2 py-1 rounded border transition-colors disabled:opacity-50',
-                s === 'ITM' && 'border-success/40 text-success hover:bg-success/10',
-                s === 'BUST' && 'border-destructive/40 text-destructive hover:bg-destructive/10',
-                s === 'PLAYING' && 'border-electric-blue/40 text-electric-blue hover:bg-electric-blue/10',
+                s === 'ITM'        && 'border-success/40 text-success hover:bg-success/10',
+                s === 'BUST'       && 'border-destructive/40 text-destructive hover:bg-destructive/10',
+                s === 'PLAYING'    && 'border-electric-blue/40 text-electric-blue hover:bg-electric-blue/10',
                 s === 'REGISTERED' && 'border-border text-on-surface-variant hover:bg-surface-container',
-                s === 'FINISHED' && 'border-success/40 text-success hover:bg-success/10',
+                s === 'FINISHED'   && 'border-success/40 text-success hover:bg-success/10',
               )}
             >
               {STATUS_LABEL[s]}
@@ -120,6 +152,20 @@ export default function ActiveSessionPage({ params }: { params: Promise<{ id: st
   const router = useRouter()
   const { data: session, isLoading } = useGetSession(id)
   const complete = useCompleteSession()
+  const updateSession = useUpdateSession()
+  const [editingName, setEditingName] = useState(false)
+  const [nameInput, setNameInput] = useState('')
+
+  function startEditName() {
+    setNameInput(session?.name ?? '')
+    setEditingName(true)
+  }
+
+  function saveName() {
+    const trimmed = nameInput.trim()
+    updateSession.mutate({ id, data: { name: trimmed || undefined } })
+    setEditingName(false)
+  }
 
   async function handleComplete() {
     await complete.mutateAsync(id)
@@ -148,7 +194,7 @@ export default function ActiveSessionPage({ params }: { params: Promise<{ id: st
     )
   }
 
-  const totalBuyIn = session.tournaments.reduce((s, t) => s + t.buyIn, 0)
+  const totalBuyIn = session.tournaments.reduce((s, t) => s + t.buyIn * (1 + t.rebuys), 0)
   const totalCashout = session.tournaments.reduce((s, t) => s + t.cashout, 0)
   const profitLoss = totalCashout - totalBuyIn
   const roi = totalBuyIn > 0 ? (profitLoss / totalBuyIn) * 100 : 0
@@ -164,8 +210,28 @@ export default function ActiveSessionPage({ params }: { params: Promise<{ id: st
           >
             <ChevronLeft className="w-5 h-5" />
           </button>
-          <div>
-            <h1 className="text-base font-semibold text-on-surface">{session.name ?? 'Session sans nom'}</h1>
+          <div className="flex items-center gap-2 min-w-0">
+            {editingName ? (
+              <input
+                autoFocus
+                type="text"
+                value={nameInput}
+                onChange={(e) => setNameInput(e.target.value)}
+                onBlur={saveName}
+                onKeyDown={(e) => { if (e.key === 'Enter') saveName(); if (e.key === 'Escape') setEditingName(false) }}
+                placeholder="Nom de la session"
+                className="text-base font-semibold bg-surface-container border border-electric-blue rounded px-2 py-0.5 text-on-surface focus:outline-none w-56"
+              />
+            ) : (
+              <button
+                onClick={startEditName}
+                className="flex items-center gap-1.5 group text-left"
+                title="Renommer la session"
+              >
+                <h1 className="text-base font-semibold text-on-surface">{session.name ?? 'Session sans nom'}</h1>
+                <Pencil className="w-3.5 h-3.5 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
+              </button>
+            )}
             {session.startedAt && (
               <p className="text-xs text-muted-foreground">
                 {new Date(session.startedAt).toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' })}
@@ -197,7 +263,13 @@ export default function ActiveSessionPage({ params }: { params: Promise<{ id: st
                 <thead>
                   <tr className="bg-surface-container border-b border-border">
                     {['Heure', 'Tournoi', 'Buy-in', 'Cashout', 'Statut', 'Actions'].map((h) => (
-                      <th key={h} className={cn('px-4 py-2.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground', ['Buy-in','Cashout','Statut','Actions'].includes(h) && 'text-right')}>
+                      <th
+                        key={h}
+                        className={cn(
+                          'px-4 py-2.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground',
+                          ['Buy-in', 'Cashout', 'Statut', 'Actions'].includes(h) && 'text-right',
+                        )}
+                      >
                         {h}
                       </th>
                     ))}

@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Patch, Post, Query, UseGuards } from '@nestjs/common'
+import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Param, Patch, Post, Query, UseGuards } from '@nestjs/common'
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard'
 import { CurrentUser, type RequestUser } from '../auth/decorators/current-user.decorator'
 import { SessionsService } from './sessions.service'
@@ -55,5 +55,11 @@ export class SessionsController {
   @Post(':id/complete')
   complete(@CurrentUser() user: RequestUser, @Param('id') id: string) {
     return this.sessionsService.complete(user.id, id)
+  }
+
+  @Delete(':id')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  remove(@CurrentUser() user: RequestUser, @Param('id') id: string) {
+    return this.sessionsService.remove(user.id, id)
   }
 }

@@ -11,14 +11,36 @@ export class SessionsService {
   constructor(private readonly prisma: PrismaService) {}
 
   async create(userId: string, dto: CreateSessionDto) {
-    return this.prisma.session.create({
-      data: {
-        userId,
-        status: 'ACTIVE',
-        startedAt: new Date(),
-        name: dto.name,
-        notes: dto.notes,
-      },
+    return this.prisma.$transaction(async (tx) => {
+      const session = await tx.session.create({
+        data: {
+          userId,
+          status: 'ACTIVE',
+          startedAt: new Date(),
+          name: dto.name,
+          notes: dto.notes,
+        },
+      })
+
+      if (dto.tournamentIds?.length) {
+        const tournaments = await tx.tournament.findMany({
+          where: { id: { in: dto.tournamentIds } },
+          select: { id: true, buyIn: true },
+        })
+        await tx.sessionTournament.createMany({
+          data: tournaments.map((t) => ({
+            sessionId: session.id,
+            tournamentId: t.id,
+            buyIn: t.buyIn,
+            status: 'PLANNED' as const,
+          })),
+        })
+      }
+
+      return tx.session.findUnique({
+        where: { id: session.id },
+        include: { tournaments: { include: { tournament: true }, orderBy: { createdAt: 'asc' } } },
+      })
     })
   }
 
@@ -30,14 +52,14 @@ export class SessionsService {
         skip: dto.offset,
         take: dto.limit,
         include: {
-          tournaments: { select: { buyIn: true, cashout: true } },
+          tournaments: { select: { buyIn: true, cashout: true, rebuys: true } },
         },
       }),
       this.prisma.session.count({ where: { userId } }),
     ])
 
     const enriched = sessions.map((s) => {
-      const totalBuyIn = s.tournaments.reduce((sum, t) => sum + t.buyIn, 0)
+      const totalBuyIn = s.tournaments.reduce((sum, t) => sum + t.buyIn * (1 + t.rebuys), 0)
       const totalCashout = s.tournaments.reduce((sum, t) => sum + t.cashout, 0)
       const profitLoss = totalCashout - totalBuyIn
       const roi = totalBuyIn > 0 ? (profitLoss / totalBuyIn) * 100 : 0
@@ -107,9 +129,15 @@ export class SessionsService {
     })
   }
 
+  async remove(userId: string, id: string) {
+    const session = await this.prisma.session.findFirst({ where: { id, userId } })
+    if (!session) throw new NotFoundException('Session introuvable')
+    await this.prisma.session.delete({ where: { id } })
+  }
+
   async complete(userId: string, sessionId: string) {
     const session = await this.findById(userId, sessionId)
-    const totalBuyIn = session.tournaments.reduce((sum, st) => sum + st.buyIn, 0)
+    const totalBuyIn = session.tournaments.reduce((sum, st) => sum + st.buyIn * (1 + st.rebuys), 0)
     const totalCashout = session.tournaments.reduce((sum, st) => sum + st.cashout, 0)
     const profitLoss = totalCashout - totalBuyIn
     const roi = totalBuyIn > 0 ? (profitLoss / totalBuyIn) * 100 : 0

@@ -1,4 +1,4 @@
-import { IsOptional, IsString, MaxLength } from 'class-validator'
+import { IsArray, IsOptional, IsString, MaxLength } from 'class-validator'
 
 export class CreateSessionDto {
   @IsOptional()
@@ -10,4 +10,9 @@ export class CreateSessionDto {
   @IsString()
   @MaxLength(500)
   notes?: string
+
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  tournamentIds?: string[]
 }
