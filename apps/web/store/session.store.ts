@@ -26,9 +26,12 @@ function hasOverlap(a: SessionItem, b: SessionItem): boolean {
 
 interface SessionStore {
   items: SessionItem[]
+  lastGrid: SessionItem[]
   addItem: (item: SessionItem) => void
   removeItem: (id: string) => void
   clearSession: () => void
+  saveLastGrid: () => void
+  restoreLastGrid: () => void
   totalBuyIn: () => number
   overlappingIds: () => Set<string>
   hasItem: (id: string) => boolean
@@ -38,6 +41,7 @@ export const useSessionStore = create<SessionStore>()(
   persist(
     (set, get) => ({
       items: [],
+      lastGrid: [],
 
       addItem: (item) =>
         set((s) => {
@@ -49,6 +53,10 @@ export const useSessionStore = create<SessionStore>()(
         set((s) => ({ items: s.items.filter((i) => i.id !== id) })),
 
       clearSession: () => set({ items: [] }),
+
+      saveLastGrid: () => set((s) => ({ lastGrid: [...s.items] })),
+
+      restoreLastGrid: () => set((s) => ({ items: [...s.lastGrid] })),
 
       totalBuyIn: () => get().items.reduce((sum, i) => sum + i.buyIn, 0),
 
